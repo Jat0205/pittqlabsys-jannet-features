@@ -12,6 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+# in case of a power outage please check if the ip is correct (this device somehow resets its ip on its own)
 
 import socket
 import time
@@ -23,7 +24,7 @@ from src.core import Parameter, Device
 from PyQt5.QtCore import QThread, pyqtSignal, QObject
 
 _DAC_BITS = 10
-_IP_ADDRESS = '172.17.39.2' # comment out for testing
+_IP_ADDRESS = '192.168.2.51'# comment out for testing
 #_IP_ADDRESS = '127.0.0.1'# use loopback for testing
 _PORT = 4000 # comment out for testing
 #_PORT = 65432 #switch ports for loopback

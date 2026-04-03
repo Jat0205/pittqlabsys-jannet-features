@@ -20,9 +20,6 @@ from src.core.adwin_helpers import get_adwin_binary_path
 from time import sleep
 import pyqtgraph as pg
 
-
-
-
 class NanodriveAdwinConfocalScanFast(Experiment):
     '''
     Fast confocal microscope scan using MCL NanoDrive and ADwin Gold II.
@@ -86,7 +83,6 @@ class NanodriveAdwinConfocalScanFast(Experiment):
         #get instances of devices
         self.nd = self.devices['nanodrive']['instance']
         self.adw = self.devices['adwin']['instance']
-
 
     def setup_scan(self):
         '''

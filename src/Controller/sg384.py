@@ -352,6 +352,247 @@ class SG384Generator(MicrowaveGeneratorBase):
         
         return True
 
+    def validate_parameter(self, path, value):
+        """
+        Enhanced parameter validation for SG384Generator with hardware-specific limits.
+        Uses get_parameter_ranges to avoid duplication and ensure consistency.
+        
+        Args:
+            path: List of strings representing the path to the parameter
+            value: The value to validate
+            
+        Returns:
+            dict: Validation result with 'valid', 'message', and optional 'clamped_value'
+        """
+        logger.info(f"SG384 validate_parameter called with path: {path}, value: {value}")
+        
+        # First, try the base class validation
+        base_result = super().validate_parameter(path, value)
+        logger.info(f"SG384 base validation result: {base_result}")
+        if not base_result['valid']:
+            return base_result
+        
+        # Get parameter ranges to avoid duplication
+        ranges = self.get_parameter_ranges(path)
+        if not ranges:
+            logger.debug(f"SG384 validate_parameter: No ranges found for path {path}, validation passes")
+            return {'valid': True, 'message': 'SG384 parameter validation passed'}
+        
+        # Get the parameter name from the path
+        param_name = path[-1] if path else None
+        logger.debug(f"SG384 validate_parameter: Validating {param_name} = {value} against ranges: {ranges}")
+        
+        # Validate against the ranges
+        if 'min' in ranges and 'max' in ranges:
+            min_val = ranges['min']
+            max_val = ranges['max']
+            units = ranges.get('units', '')
+            
+            if value < min_val:
+                clamped_value = min_val
+                if param_name == 'frequency':
+                    message = f"Frequency {value/1e9:.3f} GHz below minimum {min_val/1e9:.3f} GHz"
+                elif param_name == 'modulation_depth':
+                    message = f"Modulation depth {value/1e6:.1f} MHz below minimum {min_val/1e6:.1f} MHz"
+                else:
+                    message = f"{param_name} {value} {units} below minimum {min_val} {units}"
+                
+                return {
+                    'valid': False,
+                    'message': message,
+                    'clamped_value': clamped_value
+                }
+            elif value > max_val:
+                clamped_value = max_val
+                if param_name == 'frequency':
+                    message = f"Frequency {value/1e9:.3f} GHz above maximum {max_val/1e9:.3f} GHz"
+                elif param_name == 'modulation_depth':
+                    message = f"Modulation depth {value/1e6:.1f} MHz above maximum {max_val/1e6:.1f} MHz"
+                else:
+                    message = f"{param_name} {value} {units} above maximum {max_val} {units}"
+                
+                return {
+                    'valid': False,
+                    'message': message,
+                    'clamped_value': clamped_value
+                }
+        
+        # Special case for sweep_rate (must be less than max, not less than or equal)
+        if param_name == 'sweep_rate' and 'max' in ranges:
+            max_rate = ranges['max']
+            if value >= max_rate:
+                return {
+                    'valid': False,
+                    'message': f"Sweep rate {value} Hz must be less than {max_rate} Hz",
+                    'clamped_value': max_rate - 0.1
+                }
+        
+        return {'valid': True, 'message': 'SG384 parameter validation passed'}
+
+    def get_feedback_only(self, settings):
+        """Update device settings with validation and return only the feedback about changes.
+        
+        This method overrides the base class to include parameter validation before updating.
+        
+        Args:
+            settings: Dictionary of parameter values to update
+            
+        Returns:
+            Dictionary of feedback for each parameter
+        """
+        logger.info(f"SG384 get_feedback_only called with settings: {settings}")
+        
+        # Validate each parameter before updating
+        feedback = {}
+        validated_settings = {}
+        
+        for param_name, value in settings.items():
+            # Create path for validation (single parameter)
+            path = [param_name]
+            
+            # Validate the parameter
+            validation_result = self.validate_parameter(path, value)
+            logger.info(f"SG384 validation for {param_name} = {value}: {validation_result}")
+            
+            if validation_result.get('valid', True):
+                # Parameter is valid, use the original value
+                validated_settings[param_name] = value
+                feedback[param_name] = {
+                    'changed': False,
+                    'requested': value,
+                    'actual': value,
+                    'reason': 'success',
+                    'message': 'Parameter set successfully'
+                }
+            else:
+                # Parameter is invalid, use clamped value if available
+                clamped_value = validation_result.get('clamped_value', value)
+                validated_settings[param_name] = clamped_value
+                feedback[param_name] = {
+                    'changed': True,
+                    'requested': value,
+                    'actual': clamped_value,
+                    'reason': 'clamped',
+                    'message': validation_result.get('message', 'Parameter was clamped')
+                }
+        
+        # Update the device with validated settings
+        if validated_settings:
+            logger.info(f"SG384 updating with validated settings: {validated_settings}")
+            super().update(validated_settings)
+        
+        return feedback
+
+    def get_parameter_ranges(self, path):
+        """
+        Get parameter ranges specific to SG384Generator hardware.
+        
+        Args:
+            path: List of strings representing the path to the parameter
+            
+        Returns:
+            dict: Parameter range information
+        """
+        param_name = path[-1] if path else None
+        
+        # Debug logging to see what path is being passed
+        logger.debug(f"SG384 get_parameter_ranges called with path: {path}, param_name: {param_name}")
+        
+        ranges = {
+            'frequency': {
+                'min': 1.9e9,
+                'max': 4.1e9,
+                'type': float,
+                'units': 'Hz',
+                'info': 'RF frequency range: 1.9-4.1 GHz'
+            },
+            'power': {
+                'min': -120.0,
+                'max': 13.0,
+                'type': float,
+                'units': 'dBm',
+                'info': 'RF power range: -120 to +13 dBm'
+            },
+            'sweep_rate': {
+                'min': 0.001,
+                'max': 119.9,
+                'type': float,
+                'units': 'Hz',
+                'info': 'Sweep rate: 0.001 to 119.9 Hz'
+            },
+            'modulation_depth': {
+                'min': 0.0,
+                'max': 1e8,
+                'type': float,
+                'units': 'Hz',
+                'info': 'Modulation depth: 0 to 100 MHz'
+            },
+            'phase': {
+                'min': 0.0,
+                'max': 360.0,
+                'type': float,
+                'units': 'degrees',
+                'info': 'Phase: 0 to 360 degrees'
+            },
+            # Add missing sweep frequency parameters
+            'sweep_center_frequency': {
+                'min': 1.9e9,
+                'max': 4.1e9,
+                'type': float,
+                'units': 'Hz',
+                'info': 'Sweep center frequency: 1.9-4.1 GHz'
+            },
+            'sweep_max_frequency': {
+                'min': 1.9e9,
+                'max': 4.1e9,
+                'type': float,
+                'units': 'Hz',
+                'info': 'Sweep maximum frequency: 1.9-4.1 GHz'
+            },
+            'sweep_min_frequency': {
+                'min': 1.9e9,
+                'max': 4.1e9,
+                'type': float,
+                'units': 'Hz',
+                'info': 'Sweep minimum frequency: 1.9-4.1 GHz'
+            },
+            'sweep_deviation': {
+                'min': 0.0,
+                'max': 1.1e9,  # Half of frequency range
+                'type': float,
+                'units': 'Hz',
+                'info': 'Sweep deviation: 0 to 1.1 GHz'
+            },
+            # Add other missing parameters
+            'amplitude': {
+                'min': -120.0,
+                'max': 13.0,
+                'type': float,
+                'units': 'dBm',
+                'info': 'Amplitude: -120 to +13 dBm'
+            },
+            'dev_width': {
+                'min': 0.0,
+                'max': 1e8,
+                'type': float,
+                'units': 'Hz',
+                'info': 'Deviation width: 0 to 100 MHz'
+            },
+            'mod_rate': {
+                'min': 0.001,
+                'max': 1e8,
+                'type': float,
+                'units': 'Hz',
+                'info': 'Modulation rate: 0.001 Hz to 100 MHz'
+            }
+        }
+        
+        if param_name in ranges:
+            return ranges[param_name]
+        
+        # Fall back to base class method
+        return super().get_parameter_ranges(path)
+
     # Helper methods using mapping dictionaries
     def _param_to_scpi(self, param: str) -> str:
         """Convert parameter name to SCPI command using mapping dictionary."""
@@ -554,7 +795,11 @@ class SG384Generator(MicrowaveGeneratorBase):
         self.settings['modulation_type'] = mtype
         mod_int = self._mod_type_to_internal(mtype)
         self._set_modulation_type(mod_int)
-
+    def set_modulation_function(self, mfunc: str):
+        """Set modulation function (public interface)."""
+        self.settings['modulation_function'] = mfunc
+        mod_func_int = self._mod_func_to_internal(mfunc)
+        self._set_modulation_function(mod_func_int)
     def enable_modulation(self):
         """Enable modulation (public interface)."""
         self.settings['enable_modulation'] = True

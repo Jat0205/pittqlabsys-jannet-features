@@ -1,5 +1,5 @@
 {
-  "awg520_connections": {
+  "proteus_connections": {
     "description": "Connection map for ODMR pulsed experiments with IQ modulator, laser, and counter",
     "channels": {
       "1": {
@@ -17,78 +17,101 @@
         "description": "Microwave Q quadrature input to IQ modulator",
         "voltage_range": "±1V",
         "impedance": "50Ω"
+      },
+      "3": {
+        "connection": "Dye_Laser_AOM",
+        "type": "analog",
+        "calibration_delays": ["orange_laser_delay"],
+        "description": "Dye Laser AOM",
+        "voltage_range": "±1V",
+        "impedance": "50Ω"
+      },
+      "4": {
+        "connection": "unassigned",
+        "type": "analog",
+        "calibration_delays": [],
+        "description": "Available for future use",
+        "voltage_range": "±1V",
+        "impedance": "50Ω"
       }
     },
     "markers": {
       "ch1_marker1": {
-        "connection": "unassigned",
+        "connection": "green laser AOM",
         "type": "digital",
-        "calibration_delays": [],
+        "calibration_delays": ["green_laser_delay"],
         "description": "Available for future use",
         "voltage": "3.3V",
-        "impedance": "50Ω"
-      },
-      "ch1_marker2": {
-        "connection": "laser_switch",
-        "type": "digital",
-        "calibration_delays": ["laser_delay"],
-        "description": "Laser on/off control signal",
-        "voltage": "3.3V", 
         "impedance": "50Ω"
       },
       "ch2_marker1": {
         "connection": "unassigned",
         "type": "digital",
         "calibration_delays": [],
+        "description": "Available for future use. Please note that this used to be adwin external event trigger for the old system",
+        "voltage": "3.3V",
+        "impedance": "50Ω"
+      },
+      "ch3_marker1": {
+        "connection": "unassigned",
+        "type": "digital",
+        "calibration_delays": [],
         "description": "Available for future use",
         "voltage": "3.3V",
         "impedance": "50Ω"
       },
-      "ch2_marker2": {
-        "connection": "counter_trigger",
+      "ch4_marker1": {
+        "connection": "unassigned",
         "type": "digital",
-        "calibration_delays": ["counter_delay"],
-        "description": "Counter/DAQ trigger signal",
+        "calibration_delays": [],
+        "description": "Available for future use",
         "voltage": "3.3V",
         "impedance": "50Ω"
       }
     }
   },
   "calibration_delays": {
-    "description": "Calibration delays for ODMR pulsed experiments - adjust for your specific lab setup",
-    "laser_delay": 50.0,
+    "description": "Calibration delays for ODMR pulsed experiments",
+    "green_laser_delay": 50.0,
+    "orange_laser_delay": 10.0,
     "mw_delay": 25.0,
     "iq_delay": 30.0,
     "counter_delay": 15.0,
-    "trigger_delay": 10.0,
+    "trigger_delay": 0.0,
     "units": "ns",
     "notes": "Delays represent time to shift events BACKWARD so they arrive at experiment at intended time"
   },
   "experiment_types": {
     "odmr": {
       "description": "ODMR experiment using IQ modulator and laser",
-      "required_connections": ["ch1", "ch2", "ch1_marker2", "ch2_marker2"],
-      "optional_connections": ["ch1_marker1", "ch2_marker1"]
+      "required_connections": ["ch1", "ch2", "ch1_marker1"],
+      "optional_connections": ["ch3", "ch4", "ch2_marker1", "ch3_marker1", "ch4_marker1"]
     },
     "rabi": {
       "description": "Rabi oscillation experiment",
-      "required_connections": ["ch1", "ch2", "ch1_marker2", "ch2_marker2"],
-      "optional_connections": ["ch1_marker1", "ch2_marker1"]
+      "required_connections": ["ch1", "ch2", "ch1_marker1"],
+      "optional_connections": ["ch3", "ch4", "ch2_marker1", "ch3_marker1", "ch4_marker1"]
     },
     "spin_echo": {
       "description": "Spin echo experiment",
-      "required_connections": ["ch1", "ch2", "ch1_marker2", "ch2_marker2"],
-      "optional_connections": ["ch1_marker1", "ch2_marker1"]
+      "required_connections": ["ch1", "ch2", "ch1_marker1"],
+      "optional_connections": ["ch3", "ch4", "ch2_marker1", "ch3_marker1", "ch4_marker1"]
+    },
+    "spin_charge_conversion": {
+      "description": "Spin Charge Conversion experiment",
+      "required_connections": ["ch1", "ch2", "ch3", "ch1_marker1"],
+      "optional_connections": ["ch4", "ch2_marker1", "ch3_marker1", "ch4_marker1"]
     }
   },
   "setup_instructions": [
-    "1. This file defines the AWG520 connection map for ODMR pulsed experiments",
-    "2. Modify connection descriptions for your specific lab setup",
+    "1. This file defines the Proteus connection map for ODMR pulsed experiments",
+    "2. Modify connection descriptions for your specific Instruments",
     "3. Measure and update calibration delays for your hardware",
     "4. Verify connections match your physical setup",
     "5. Channel 1: IQ modulator I input (microwave pulses)",
     "6. Channel 2: IQ modulator Q input (microwave pulses)",
-    "7. ch1_marker2: Laser switch control",
-    "8. ch2_marker2: Counter/DAQ trigger"
+    "7. ch1_marker1: Laser switch control",
+    "8. ch2_marker1: Counter/DAQ trigger",
+    "9. Channel 3: Dye Laser AOM"
   ]
 }

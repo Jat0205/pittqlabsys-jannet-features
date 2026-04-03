@@ -166,6 +166,28 @@ def get_configured_confocal_scans_folder() -> Path:
     return confocal_scans_folder
 
 
+def get_configured_nv_positioning_folder() -> Path:
+    """
+    Get the configured nv_positioning_folder path.
+
+    Returns:
+        Path object pointing to the nv_positioning_folder within the data folder
+    """
+    data_folder = get_configured_data_folder()
+    nv_positioning_experiment_folder = data_folder / 'nv_positioning_experiment'
+    return nv_positioning_experiment_folder
+
+def get_configured_server_folder() -> Path:
+    """
+    Get the configured_server_folder path.
+
+    Returns:
+        Path object pointing to the configured_server_folder within the data folder
+    """
+    data_folder = get_configured_data_folder()
+    server_experiment_folder = data_folder / 'server_experiment'
+    return server_experiment_folder
+
 def get_configured_experiments_folder() -> Path:
     """
     Get the configured experiments folder path from the config file.

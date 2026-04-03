@@ -18,6 +18,10 @@ from src.core import Parameter, Device, Experiment
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as Canvas
 from matplotlib.figure import Figure
 import pyqtgraph as pg
+import logging
+
+# Set up logging for GUI operations
+gui_logger = logging.getLogger('AQuISS_GUI')
 
 
 # ======== AQuISSQTreeItem ==========
@@ -25,6 +29,9 @@ class AQuISSQTreeItem(QtWidgets.QTreeWidgetItem):
     """
     Custom QTreeWidgetItem with Widgets
     """
+    
+    # Custom signal that only fires when user finishes editing
+    editingFinished = QtCore.pyqtSignal(object)  # emits the item itself
 
     def __init__(self, parent, name, value, valid_values, info, visible=None):
         """
@@ -190,6 +197,8 @@ class AQuISSQTreeItem(QtWidgets.QTreeWidgetItem):
 
         # if row 2 (editrole, value has been entered)
         if role == 2 and column == 1:
+            # This is user editing - emit our custom signal
+            user_editing = True
 
             if isinstance(value, str):
                 value = self.cast_type(value) # cast into same type as valid values
@@ -205,10 +214,12 @@ class AQuISSQTreeItem(QtWidgets.QTreeWidgetItem):
 
             # save value in internal variable
             self.value = value
-
         elif column == 0:
             # labels should not be changed so we set it back
             value = self.name
+            user_editing = False
+        else:
+            user_editing = False
 
         if value is None:
             value = self.value
@@ -220,6 +231,11 @@ class AQuISSQTreeItem(QtWidgets.QTreeWidgetItem):
 
         else:
             self.emitDataChanged()
+        
+        # Emit our custom signal only when user finishes editing
+        # Note: Currently not connected anywhere, so commented out to avoid errors
+        # if user_editing:
+        #     self.editingFinished.emit(None)
 
     def cast_type(self, var, cast_type=None):
         """
@@ -510,3 +526,340 @@ class PyQtCoordinatesBar(QtWidgets.QWidget):
         Returns: QSize object that specifies the size of widget
         """
         return QtCore.QSize(10, 10)
+
+# Number clamping delegate for tree widgets
+import re
+
+_NUM_RE = re.compile(r'[+\-]?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?$')
+
+def _parse_number(txt: str):
+    t = txt.strip()
+    if _NUM_RE.match(t):
+        return float(t) if ('.' in t or 'e' in t.lower()) else int(t)
+    return None
+
+class NumberClampDelegate(QtWidgets.QStyledItemDelegate):
+    """
+    Validates/clamps numeric edits for column 1 *inside* the editor->model commit.
+    Reads min/max metadata from the item (if present) via UserRole or attributes.
+    Expected per-item metadata (optional):
+       - item.min_value / item.max_value   (python attrs)
+       - or data(UserRole+1) / data(UserRole+2)
+       - or a dict in data(UserRole) with keys 'min','max'
+    If no bounds are found, passes through unchanged.
+    
+    Uses model-based visual feedback through BackgroundRole instead of custom painting.
+    """
+    parameter_feedback_signal = QtCore.pyqtSignal(object, dict) # item, feedback_dict
+    validation_result_signal = QtCore.pyqtSignal(object, str, dict) # item, param_name, result_dict
+    
+    # Custom role for storing feedback state
+    FEEDBACK_ROLE = QtCore.Qt.UserRole + 42
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._clear_timers = {}  # Track timers for clearing backgrounds using (row, column) tuples
+    
+    def _flash_background(self, item, column, state):
+        """Flash background color on item and auto-clear after 1.5 seconds"""
+        brushes = {
+            'clamped': QtGui.QBrush(QtGui.QColor(255, 179, 0, 110)),   # orange
+            'success': QtGui.QBrush(QtGui.QColor(76, 175, 80, 90)),    # green
+            'error':   QtGui.QBrush(QtGui.QColor(244, 67, 54, 110)),   # red
+        }
+        
+        if state in brushes:
+            item.setBackground(column, brushes[state])
+            gui_logger.debug(f"DELEGATE: Set item background to {state} color")
+            
+            # Store feedback reason in item attribute
+            item._feedback_reason = state
+            
+            # Create a hashable key for timer tracking
+            timer_key = (id(item), column)
+            
+            # Clear after 1.5 s
+            if timer_key in self._clear_timers:
+                self._clear_timers[timer_key].stop()
+            t = QtCore.QTimer(self)
+            t.setSingleShot(True)
+            t.timeout.connect(lambda it=item, col=column: self._clear_item_background(it, col))
+            t.start(1500)
+            self._clear_timers[timer_key] = t
+    
+    def _clear_item_background(self, item, column):
+        """Clear background color from item"""
+        item.setBackground(column, QtGui.QBrush())  # Empty brush clears background
+        
+        # Clear feedback reason from item attribute
+        if hasattr(item, '_feedback_reason'):
+            delattr(item, '_feedback_reason')
+            gui_logger.debug(f"DELEGATE: Cleared item._feedback_reason")
+        
+        # Remove timer from tracking using hashable key
+        timer_key = (id(item), column)
+        if timer_key in self._clear_timers:
+            del self._clear_timers[timer_key]
+        
+        gui_logger.debug(f"DELEGATE: Cleared item background")
+    
+    def _clear_feedback(self, view, index):
+        """Clear visual feedback from an index using direct item styling"""
+        # Get the tree item directly
+        item = view.itemFromIndex(index)
+        if not item:
+            return
+        
+        self._clear_item_background(item, 1)
+    
+    def setFeedback(self, index, status):
+        """
+        Public method to set visual feedback for an index.
+        Uses direct item background styling.
+        
+        Args:
+            index: QModelIndex for the cell to highlight
+            status: "success", "clamped", "error", or None to clear
+        """
+        view = self.parent()  # the QTreeWidget
+        if not isinstance(view, QtWidgets.QAbstractItemView):
+            gui_logger.warning(f"DELEGATE: setFeedback - parent is not QAbstractItemView: {type(view)}")
+            return
+        
+        item = view.itemFromIndex(index)
+        if not item:
+            gui_logger.warning(f"DELEGATE: setFeedback - could not get item from index")
+            return
+        
+        if status is None:
+            self._clear_item_background(item, 1)
+        else:
+            self._flash_background(item, 1, status)
+    
+    def _is_significantly_different(self, actual_value, requested_value, device, param_name):
+        """
+        Check if the difference between actual and requested values is significant
+        based on device-specific tolerances.
+        
+        Args:
+            actual_value: Value reported by device
+            requested_value: Value user requested
+            device: Device instance
+            param_name: Parameter name
+            
+        Returns:
+            bool: True if difference is significant enough to flag
+        """
+        # For non-numeric values, use exact comparison
+        if not isinstance(actual_value, (int, float)) or not isinstance(requested_value, (int, float)):
+            return actual_value != requested_value
+        
+        # Get device-specific tolerance
+        tolerance = self._get_device_tolerance(device, param_name)
+        
+        if tolerance is None:
+            # Fallback to default tolerance (0.1% relative)
+            if requested_value != 0:
+                relative_diff = abs(actual_value - requested_value) / abs(requested_value)
+                return relative_diff > 0.001
+            else:
+                return abs(actual_value - requested_value) > 1e-6
+        
+        # Use device-specific tolerance
+        if tolerance['type'] == 'relative':
+            if requested_value != 0:
+                relative_diff = abs(actual_value - requested_value) / abs(requested_value)
+                return relative_diff > tolerance['value']
+            else:
+                # For zero values, use absolute tolerance
+                return abs(actual_value - requested_value) > tolerance.get('absolute_fallback', 1e-6)
+        elif tolerance['type'] == 'absolute':
+            return abs(actual_value - requested_value) > tolerance['value']
+        else:
+            # Unknown tolerance type, use exact comparison
+            return actual_value != requested_value
+    
+    def _get_device_tolerance(self, device, param_name):
+        """
+        Get device-specific tolerance for parameter comparison.
+        
+        Args:
+            device: Device instance
+            param_name: Parameter name
+            
+        Returns:
+            dict: Tolerance configuration or None for default
+        """
+        device_name = device.__class__.__name__.lower()
+        
+        # Device-specific tolerances
+        tolerances = {
+            'mclnanodrive': {
+                'x_pos': {'type': 'absolute', 'value': 0.01},  # 0.01 microns
+                'y_pos': {'type': 'absolute', 'value': 0.01},  # 0.01 microns  
+                'z_pos': {'type': 'absolute', 'value': 0.01},  # 0.01 microns
+            },
+            'sg384generator': {
+                'frequency': {'type': 'relative', 'value': 0.0001},  # 0.01% (very precise for frequency)
+                'sweep_center_frequency': {'type': 'relative', 'value': 0.0001},
+                'sweep_max_frequency': {'type': 'relative', 'value': 0.0001},
+                'sweep_min_frequency': {'type': 'relative', 'value': 0.0001},
+                'power': {'type': 'absolute', 'value': 0.1},  # 0.1 dBm
+                'phase': {'type': 'absolute', 'value': 0.1},   # 0.1 degrees
+            },
+            'adwingolddevice': {
+                # ADwin parameters are typically very precise
+                'delay': {'type': 'absolute', 'value': 0.001},  # 0.001 seconds
+            }
+        }
+        
+        # Check if device has specific tolerance for this parameter
+        if device_name in tolerances and param_name in tolerances[device_name]:
+            return tolerances[device_name][param_name]
+        
+        # Check if device has a general tolerance method
+        if hasattr(device, 'get_parameter_tolerance'):
+            try:
+                return device.get_parameter_tolerance(param_name)
+            except:
+                pass
+        
+        # No specific tolerance found, use default
+        return None
+    
+    def createEditor(self, parent, option, index):
+        # Clear previous color as soon as user starts editing
+        self.setFeedback(index, None)
+        # Use a QLineEdit so you keep your current UX (free typing + sci notation)
+        editor = QtWidgets.QLineEdit(parent)
+        editor.setFrame(False)
+        # commit on Enter, and when focus leaves
+        editor.editingFinished.connect(lambda: self.commitData.emit(editor))
+        return editor
+
+    def setEditorData(self, editor, index):
+        # Prefer EditRole (numeric), then DisplayRole, then empty
+        val = index.data(QtCore.Qt.EditRole)
+        if val is None or val == "":
+            val = index.data(QtCore.Qt.DisplayRole)
+        if val is None:
+            val = ""
+        editor.setText(str(val))
+        editor.selectAll()  # UX nicety: select existing text on focus
+
+    def setModelData(self, editor, model, index):
+        raw = editor.text().strip()
+        gui_logger.debug(f"DELEGATE: setModelData called with text '{raw}'")
+        
+        # Get the tree item to check for existing feedback
+        view = editor.parent()
+        while view and not isinstance(view, QtWidgets.QAbstractItemView):
+            view = view.parent()
+        if isinstance(view, QtWidgets.QAbstractItemView):
+            tw_item = view.itemFromIndex(index)
+        else:
+            tw_item = None
+        
+        # Check if we already have feedback for this index to prevent double validation
+        if tw_item and hasattr(tw_item, '_feedback_reason'):
+            existing_feedback = tw_item._feedback_reason
+            gui_logger.debug(f"DELEGATE: Already have feedback '{existing_feedback}', skipping validation")
+            # Just write the value without validation
+            try:
+                num = float(raw)
+                model.setData(index, num, QtCore.Qt.EditRole)
+                model.setData(index, "{:.3g}".format(num), QtCore.Qt.DisplayRole)
+                # Update the item's internal value
+                if tw_item and hasattr(tw_item, 'value'):
+                    tw_item.value = num
+                gui_logger.debug(f"DELEGATE: Wrote value {num} without validation")
+            except ValueError:
+                gui_logger.debug("DELEGATE: Invalid number in second call, ignoring")
+            return
+        
+        # Handle empty string case - don't update the model
+        if not raw:
+            gui_logger.debug("DELEGATE: Empty string, reverting editor")
+            current_value = index.data(QtCore.Qt.EditRole)
+            if current_value is not None:
+                editor.setText(str(current_value))
+            return
+        
+        num = _parse_number(raw)
+        if num is None:
+            gui_logger.debug("DELEGATE: Invalid number, reverting editor")
+            current_value = index.data(QtCore.Qt.EditRole)
+            if current_value is not None:
+                editor.setText(str(current_value))
+            return
+
+        gui_logger.debug(f"DELEGATE: Parsed number: {num}")
+
+        if tw_item is None:
+            gui_logger.debug("DELEGATE: No tree item found, fallback write")
+            # Fallback: just write the number
+            model.setData(index, num, QtCore.Qt.EditRole)
+            return
+
+        # Do validation, then write final value, then flash color
+        final_value = num
+        state = 'success'
+        
+        if hasattr(tw_item, 'get_device'):
+            device, path_to_device = tw_item.get_device()
+            gui_logger.debug(f"DELEGATE: Got device {device} and path {path_to_device}")
+            
+            if device and hasattr(device, 'validate_parameter'):
+                validation_result = device.validate_parameter(path_to_device, num)
+                param_name = path_to_device[-1] if path_to_device else tw_item.name
+                gui_logger.debug(f"DELEGATE: Validation result: {validation_result}")
+                
+                # Ask the device to validate/clamp
+                is_valid = validation_result.get('valid', True)
+                clamped_value = validation_result.get('clamped_value')
+                
+                gui_logger.debug(f"DELEGATE: is_valid={is_valid}, clamped_value={clamped_value}, original_value={num}")
+                
+                if not is_valid and clamped_value is not None:
+                    final_value = clamped_value
+                    state = 'clamped'
+                    gui_logger.debug(f"DELEGATE: Value clamped from {num} to {clamped_value} - setting state to 'clamped'")
+                elif not is_valid:
+                    gui_logger.debug("DELEGATE: Validation failed, no clamped value - setting state to 'error'")
+                    state = 'error'
+                    # Don't update the model for errors
+                    return
+                else:
+                    gui_logger.debug("DELEGATE: Validation passed - setting state to 'success'")
+                    state = 'success'
+        
+        # Write final value back to the model
+        model.setData(index, final_value, QtCore.Qt.EditRole)
+        model.setData(index, "{:.3g}".format(final_value), QtCore.Qt.DisplayRole)
+        
+        # Update the item's internal value
+        if hasattr(tw_item, 'value'):
+            tw_item.value = final_value
+        
+        # Flash the background on the VALUE column
+        gui_logger.debug(f"DELEGATE: About to flash background with state='{state}' for final_value={final_value}")
+        self._flash_background(tw_item, index.column(), state)
+        
+        # Emit signal so MainWindow can append to History/notifications
+        param_name = tw_item.name
+        feedback = {
+            'valid': state != 'error',
+            'message': (f"Parameter {param_name} was clamped from {num} to {final_value}"
+                       if state == 'clamped' else f"Parameter {param_name} set successfully"),
+            'clamped_value': final_value if state == 'clamped' else None,
+            'requested_value': num,
+            'actual_value': final_value,
+            'reason': state
+        }
+        self.validation_result_signal.emit(tw_item, param_name, feedback)
+        
+        gui_logger.debug(f"DELEGATE: Final value set to {final_value}, state: {state}")
+    
+    def paint(self, painter, option, index):
+        """Keep paint() default - item.setBackground() handles backgrounds correctly"""
+        super().paint(painter, option, index)

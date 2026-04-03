@@ -14,7 +14,6 @@ it l r # Documentation Navigation
 - **[🧪 Experiment Development Guide](EXPERIMENT_DEVELOPMENT.md)** - Creating scientific experiments
 - **[📋 API Reference](API_REFERENCE.md)** - Detailed class and method documentation
 - **[🗂️ Project Root Detection](PROJECT_ROOT_DETECTION.md)** - Robust Python path resolution system
-- **[📋 Quality Guidelines](QUALITY_GUIDELINES.md)** - Code quality standards and assessment tools
 
 ## 📋 Specialized Documentation
 
@@ -36,7 +35,6 @@ it l r # Documentation Navigation
 - [Device Development](DEVICE_DEVELOPMENT.md)
 - [Experiment Development](EXPERIMENT_DEVELOPMENT.md)
 - [API Reference](API_REFERENCE.md)
-- [Quality Guidelines](QUALITY_GUIDELINES.md)
 
 ### For Lab Administrators
 - [Configuration Guide](CONFIGURATION_FILES.md)

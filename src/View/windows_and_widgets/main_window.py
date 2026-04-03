@@ -12,12 +12,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-from PyQt5 import QtGui, QtCore, QtWidgets
-from PyQt5.uic import loadUiType
-from PyQt5.QtCore import QThread, pyqtSlot, Qt
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-import pyqtgraph as pg
 
+"""to access current saving directory:
+(self.data_saving_tab.current_path())"""
+from .agilent_8596E_GUI import SpectrumAnalyzerView
+from .data_saving_tab import data_saving_tab_view
+from .display_GUI import Display_View
+from .positioning_stages_GUI import positioning_stages_view
+from PyQt5 import QtGui, QtWidgets
+from PyQt5.uic import loadUiType
+from PyQt5 import QtCore
+from PyQt5.QtWidgets import QSizePolicy
+from PyQt5.QtCore import QThread, pyqtSlot, Qt, QSignalBlocker
 from src.core import Parameter, Device, Experiment, Probe
 from src.core.experiment_iterator import ExperimentIterator
 from src.core.read_probes import ReadProbes
@@ -28,7 +34,7 @@ from src.core.helper_functions import get_project_root
 from src.config_store import load_config, merge_config, save_config
 from pathlib import Path
 from src.config_paths import resolve_paths
-import os, io, json, webbrowser, datetime, operator
+import os, webbrowser, datetime, operator
 import numpy as np
 from collections import deque
 from functools import reduce
@@ -141,6 +147,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         """
         super().__init__(*args, **kwargs)
+        
+        # Initialize recursion guard
+        self._updating_parameters = False
 
         # 1) Resolve your application folders from config_file:
         if config_file is None:
@@ -211,6 +220,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super(MainWindow, self).__init__()
         gui_logger.debug("Calling setupUi()")
         self.setupUi(self)
+        self.spectrum_tab = SpectrumAnalyzerView()
+        self.tabWidget.addTab(self.spectrum_tab, "Spectrum Analyzer")
+        self.data_saving_tab = data_saving_tab_view()
+        self.tabWidget.addTab(self.data_saving_tab, "Data Saving")
+        self.data_saving_path = self.data_saving_tab.current_path() # @
+        self.positioning_tab = positioning_stages_view()
+        self.tabWidget.addTab(self.positioning_tab, "Positioning")
+        self.display_choice = self.positioning_tab.display_choice()
+        self.snapshot_or_live = self.positioning_tab.snapshot_or_live()
+        self.positioning_tab.display_choice_changed.connect(self.update_display_choice)
+        self.positioning_tab.snapshot_mode_changed.connect(self.update_snapshot_mode)
+        self.positioning_tab.save_or_find_nv_button_clicked.connect(self.update_current_data_saving_path) # @
+        self.positioning_tab.take_img_signal.connect(self.take_frame)
         gui_logger.debug("setupUi() completed successfully")
         
         # Fix for macOS menu bar issue - ensure menu bar is properly attached to main window
@@ -322,18 +344,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             # tree structures
             self.tree_experiments.itemClicked.connect(
                 lambda: onExperimentParamClick(self.tree_experiments.currentItem(), self.tree_experiments.currentColumn()))
-            self.tree_experiments.itemChanged.connect(lambda: self.update_parameters(self.tree_experiments))
+            # Connect to itemChanged signal with proper item/column parameters
+            self.tree_experiments.itemChanged.connect(
+                lambda item, col: self.update_parameters(self.tree_experiments, item, col)
+            )
             self.tree_experiments.itemClicked.connect(self.btn_clicked)
             # self.tree_experiments.installEventFilter(self)
             # QtWidgets.QTreeWidget.installEventFilter(self)
-
-
             self.tabWidget.currentChanged.connect(lambda : self.switch_tab())
             self.tree_dataset.clicked.connect(lambda: self.btn_clicked())
 
             self.tree_settings.itemClicked.connect(
                 lambda: onExperimentParamClick(self.tree_settings.currentItem(), self.tree_settings.currentColumn()))
-            self.tree_settings.itemChanged.connect(lambda: self.update_parameters(self.tree_settings))
+            self.tree_settings.itemChanged.connect(
+                lambda item, col: self.update_parameters(self.tree_settings, item, col)
+            )
             self.tree_settings.itemExpanded.connect(lambda: self.refresh_devices())
 
 
@@ -356,6 +381,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         gui_logger.debug("About to call setup_trees()")
         setup_trees()
         gui_logger.debug("setup_trees() completed, about to call connect_controls()")
+        
+        # Install NumberClampDelegate for column 1 (Value column) on both trees
+        from src.View.windows_and_widgets.widgets import NumberClampDelegate
+        
+        self.settings_delegate = NumberClampDelegate(self.tree_settings)
+        self.tree_settings.setItemDelegateForColumn(1, self.settings_delegate)
+        self.settings_delegate.validation_result_signal.connect(self._handle_delegate_validation_result)
+        
+        self.experiments_delegate = NumberClampDelegate(self.tree_experiments)
+        self.tree_experiments.setItemDelegateForColumn(1, self.experiments_delegate)
+        self.experiments_delegate.validation_result_signal.connect(self._handle_delegate_validation_result)
+        
+        gui_logger.debug("Installed NumberClampDelegate for column 1 on both trees and connected validation signals")
+        
         connect_controls()
         gui_logger.debug("connect_controls() completed")
 
@@ -404,6 +443,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             gui_logger.warning(f"Could not load devices from config: {e}")
             gui_logger.info("Starting with empty device list")
 
+        # Refresh the devices tree to show loaded devices
+        self.refresh_tree(self.tree_settings, self.devices)
+        gui_logger.info(f"Refreshed devices tree with {len(self.devices)} devices")
+
         #self.load_config(self.config_filepath)
 
         self.data_sets = {}  # todo: load datasets from tmp folder
@@ -423,6 +466,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # if self.config_filepath is None:
         #     self.config_filepath = os.path.join(self._DEFAULT_CONFIG["gui_settings"], 'gui.aqs')
 
+    def update_current_data_saving_path(self):
+        self.data_saving_path = self.data_saving_tab.current_path()
+        self.positioning_tab.data_saving_path = self.data_saving_path
+
+    def take_frame(self):
+        if self.positioning_tab.snapshot_or_live()=="Snapshot":
+            frame = self.Display_View_widget.widget.get_latest_frame()
+            print(f"frame is {frame}")
+            self.positioning_tab.frame = frame
+
     def closeEvent(self, event):
         """
         things to be done when gui closes, like save the settings
@@ -435,6 +488,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             # Save to default location
             default_config_path = get_project_root() / "src" / "gui_config.json"
             self.save_config(str(default_config_path))
+
+        try:
+            self.positioning_tab.close()
+        except Exception as e:
+            print(f"Error closing positioning device: {e}")
         
         self.experiment_thread.quit()
         self.read_probes.quit()
@@ -506,14 +564,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             self.probe_file.close()
 
-
-
     def switch_tab(self):
         """
         takes care of the action that happen when switching between tabs
         e.g. activates and deactives probes
         """
         current_tab = str(self.tabWidget.tabText(self.tabWidget.currentIndex()))
+        if current_tab == "Positioning":
+            self.load_display_widget()
+            self.resize(self.sizeHint())
+        else:
+            if hasattr(self, "Display_View_widget") and self.Display_View_widget is not None:
+                self.Display_View_widget.close()
+                self.Display_View_widget.setParent(None)
+                self.Display_View_widget.deleteLater()
+                self.Display_View_widget = None  # prevent multiple deletions
+
+                # Show original contents again
+                self.restore_layout_contents()
         if self.current_experiment is None:
             if current_tab == 'Probes':
                 self.read_probes.start()
@@ -530,6 +598,71 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         else:
             self.log('updating probes / devices disabled while experiment is running!')
+
+    def update_display_choice(self, new_display_choice):
+        print("update_display_choice called")
+        self.display_choice = new_display_choice
+        self.reload_display_widget()
+
+    def update_snapshot_mode(self, mode):
+        print("update_snapshot_mode called", mode)
+        self.snapshot_or_live = mode
+        self.reload_display_widget()
+
+    def update_x_crosshair(self):
+        self.positioning_tab.x_crosshair = self.Display_View_widget.x_selected
+
+    def update_y_crosshair(self):
+        self.positioning_tab.y_crosshair = self.Display_View_widget.y_selected
+
+    def reload_display_widget(self):
+        print("reload_display_widget called, snapshot or live:", self.snapshot_or_live)
+        #if hasattr(self, 'Display_View_widget'):
+        self.Display_View_widget.update_choices(self.display_choice, self.snapshot_or_live)
+
+    def remove_and_store_layout_contents(self, layout):
+        self._stored_layout_items = []
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            sub_layout = item.layout()
+            spacer = item.spacerItem()
+
+            if widget:
+                widget.setParent(None)
+                self._stored_layout_items.append(('widget', widget))
+            elif sub_layout:
+                self._stored_layout_items.append(('layout', sub_layout))
+            elif spacer:
+                self._stored_layout_items.append(('spacer', spacer))
+
+    def restore_layout_contents(self):
+        for item_type, item in self._stored_layout_items:
+            if item_type == 'widget':
+                self.verticalLayout_2.addWidget(item)
+                item.show()
+            elif item_type == 'layout':
+                self.verticalLayout_2.addLayout(item)
+            elif item_type == 'spacer':
+                self.verticalLayout_2.addItem(item)
+
+    def load_display_widget(self):
+        print("Loading Display_View_widget...")  # Debug line
+        # Hide original layout contents
+        self.remove_and_store_layout_contents(self.verticalLayout_2)
+        # Create and add display view widget
+        self.Display_View_widget = Display_View(self.display_choice, self.snapshot_or_live)
+        self.Display_View_widget.x_crosshair.connect(self.update_x_crosshair)
+        self.Display_View_widget.y_crosshair.connect(self.update_y_crosshair)
+        self.Display_View_widget.setMinimumHeight(500)
+        self.Display_View_widget.setMinimumWidth(500)
+
+        # ensure it expands to fill space
+        self.Display_View_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.verticalLayout_2.addWidget(self.Display_View_widget)
+        self.Display_View_widget.show()
+        self.verticalLayout_2.update()
+        self.verticalLayout_2.activate()
 
     def refresh_devices(self):
         """
@@ -743,6 +876,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     log_function=self.log,
                     data_path=data_folder_name,
                     raise_errors=False)
+                print(f"experiments {self.experiments} loaded_failed {loaded_failed} devices {self.devices}")
 
                 # delete instances of new devices/experiments that have been deselected
                 for name in removed_experiments:
@@ -1361,75 +1495,718 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tree_experiments.setColumnWidth(1, 400)
         self.tree_experiments.setColumnWidth(2, 50)
 
-    def update_parameters(self, treeWidget):
+    def _coerce_from_text(self, item, text: str):
         """
-        updates the internal dictionaries for experiments and devices with values from the respective trees
-
-        treeWidget: the tree from which to update
-
+        Helper method to coerce text input to the appropriate type using regex pattern matching.
+        
+        Args:
+            item: Tree item containing the value
+            text: Raw text input from user
+            
+        Returns:
+            Coerced value of appropriate type (int, float, bool, or str)
         """
-        gui_logger.debug(f"update_parameters called for tree: {type(treeWidget)}")
+        import re
+        
+        t = text.strip()
+        
+        # Check if it's a valid number (int or float, including scientific notation)
+        if re.fullmatch(r'[+\-]?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?', t):
+            if ('.' not in t) and ('e' not in t.lower()):
+                return int(t)
+            return float(t)
+        
+        # Check if it's a boolean
+        if t.lower() in ('true', 'false'):
+            return t.lower() == 'true'
+        
+        # Check if item has specific valid_values constraints
+        if hasattr(item, 'valid_values'):
+            expected_type = item.valid_values
+            if isinstance(expected_type, list):
+                # For list types, return as string if valid
+                if t in expected_type:
+                    return t
+                else:
+                    raise ValueError(f"Value '{t}' not in valid options: {expected_type}")
+            elif expected_type == str:
+                return str(t)
+            elif expected_type == int:
+                # Try to convert to int if it's a number
+                try:
+                    return int(float(t))
+                except ValueError:
+                    raise ValueError(f"Cannot convert '{t}' to integer")
+            elif expected_type == float:
+                # Try to convert to float if it's a number
+                try:
+                    return float(t)
+                except ValueError:
+                    raise ValueError(f"Cannot convert '{t}' to float")
+        
+        # Default: return as string
+        return t
 
-        if treeWidget == self.tree_settings:
-            gui_logger.debug("Updating parameters from tree_settings")
-            item = treeWidget.currentItem()
-            if item is None:
-                gui_logger.debug("No current item in tree_settings")
+    def _write_clamped_value_to_cell(self, item, clamped_value):
+        """
+        Simplified method to write clamped value to cell.
+        
+        Args:
+            item: Tree item to update
+            clamped_value: The clamped value to write
+        """
+        gui_logger.info(f"Writing clamped value {clamped_value} to item {item.name}")
+        
+        # Block signals to prevent recursion
+        view = item.treeWidget()
+        view.blockSignals(True)
+        try:
+            # Update the item's internal value
+            item.value = clamped_value
+            
+            # Update the display text directly
+            item.setText(1, str(clamped_value))
+            
+            # Force a complete refresh of the tree widget
+            view.repaint()
+            
+            gui_logger.info(f"Successfully updated item {item.name} to display {clamped_value}")
+            
+        finally:
+            view.blockSignals(False)
+            # Clear the clamped feedback flag so future updates can proceed
+            if hasattr(item, '_clamped_feedback'):
+                delattr(item, '_clamped_feedback')
+
+    def update_parameters(self, treeWidget, changed_item=None, changed_col=None):
+        """
+        Enhanced parameter update with validation and user feedback.
+        Updates the internal dictionaries for experiments and devices with values from the respective trees.
+        Provides visual feedback for parameter validation, clamping, and errors.
+
+        Args:
+            treeWidget: the tree from which to update
+            changed_item: the specific item that changed (if called from signal)
+            changed_col: the column that changed (if called from signal)
+        """
+        # Prevent recursion
+        if getattr(self, "_updating_parameters", False) or getattr(self, "_programmatic_update", False):
+            return
+
+        # We only care about edits in the Value column (1)
+        if changed_item is None or changed_col is None:
+            return
+
+        # If a delegate is installed for this column, skip processing entirely.
+        # The delegate handles validation, clamping, and feedback via its own signals.
+        if changed_col == 1 and treeWidget.itemDelegateForColumn(changed_col) in [self.settings_delegate, self.experiments_delegate]:
+            gui_logger.debug(f"update_parameters: Skipping processing for {changed_item.name} - delegate handles it")
+            return # Exit early for delegate-handled columns
+
+        # If not column 1, or no delegate, proceed with original logic
+        if changed_col != 1:
+            return
+
+        item = changed_item
+        
+        self._updating_parameters = True
+        try:
+            # Check if this item is already being processed for clamping
+            if getattr(item, '_clamped_feedback', False):
+                gui_logger.debug(f"Skipping update for {item.name} - already processing clamped value")
                 return
 
-            device, path_to_device = item.get_device()
-            gui_logger.debug(f"Updating device: {device.name}, path: {path_to_device}")
-
-            # build nested dictionary to update device
-            dictator = item.value
-            for element in path_to_device:
-                dictator = {element: dictator}
-
-            # get old value from device
-            old_value = device.settings
-            path_to_device.reverse()
-            for element in path_to_device:
-                old_value = old_value[element]
-
-            # send new value from tree to device
-            device.update(dictator)
-
-            new_value = item.value
-            if new_value is not old_value:
-                msg = "changed parameter {:s} from {:s} to {:s} on {:s}".format(item.name, str(old_value),
-                                                                                str(new_value), device.name)
-                gui_logger.info(f"Parameter updated: {item.name} from {old_value} to {new_value} on {device.name}")
-            else:
-                msg = "did not change parameter {:s} on {:s}".format(item.name, device.name)
-                gui_logger.debug(f"Parameter unchanged: {item.name} on {device.name}")
-
-            self.log(msg)
-        elif treeWidget == self.tree_experiments:
-            gui_logger.debug("Updating parameters from tree_experiments")
-            item = treeWidget.currentItem()
-            if item is None:
-                gui_logger.debug("No current item in tree_experiments")
+            # Parse the new value and validate against device ranges FIRST
+            raw_text = item.text(1).strip()
+            
+            # If editor just opened and gave us an empty string, ignore this emission
+            if raw_text == "" and isinstance(item.data(1, Qt.EditRole), (int, float)):
+                gui_logger.debug(f"Ignoring empty string emission for {item.name} - editor just opened")
                 return
-            experiment, path_to_experiment, _ = item.get_experiment()
-            gui_logger.debug(f"Updating experiment: {experiment.name}, path: {path_to_experiment}")
+            
+            # Get the current value from EditRole for proper numeric comparison
+            current_value = item.data(1, Qt.EditRole)
+            if current_value is None:
+                current_value = getattr(item, "value", "")
+            value_was_clamped = False  # Track if value was clamped during validation
+            
+            gui_logger.debug(f"Value change check - raw_text: '{raw_text}', current_value: '{current_value}' (type: {type(current_value)})")
+            
+            # Try to parse the new value using helper method
+            try:
+                new_value = self._coerce_from_text(item, raw_text)
+            except ValueError as e:
+                gui_logger.warning(f"Invalid value '{raw_text}' for {item.name}: {e}")
+                self._handle_parameter_error(item, str(e), "GUI")
+                return
+            
+            # For device parameters, validate against device ranges BEFORE comparing to current value
+            if treeWidget == self.tree_settings:
+                device, path_to_device = item.get_device()
+                if device and hasattr(device, 'validate_parameter'):
+                    gui_logger.debug(f"Pre-validating parameter {item.name} = {new_value} on {device.name}")
+                    validation_result = device.validate_parameter(path_to_device, new_value)
+                    gui_logger.debug(f"Pre-validation result: {validation_result}")
+                    
+                    if not validation_result.get('valid', True):
+                        # Check if there's a clamped value available
+                        clamped_value = validation_result.get('clamped_value')
+                        if clamped_value is not None:
+                            # Use the clamped value and show warning
+                            gui_logger.info(f"Parameter {item.name} was clamped from {new_value} to {clamped_value}")
+                            new_value = clamped_value
+                            value_was_clamped = True
+                            # Set the clamped feedback flag immediately to prevent recursive calls
+                            item._clamped_feedback = True
+                        else:
+                            # No clamped value available, show error and don't proceed
+                            error_msg = validation_result.get('message', 'Parameter validation failed')
+                            gui_logger.warning(f"Pre-validation failed: {item.name} on {device.name} - {error_msg}")
+                            self._handle_parameter_error(item, error_msg, device.name)
+                            return
+                    else:
+                        # Validation passed, check if value was clamped anyway
+                        if validation_result.get('clamped_value') is not None:
+                            clamped_value = validation_result.get('clamped_value')
+                            gui_logger.info(f"Parameter {item.name} was clamped from {new_value} to {clamped_value}")
+                            new_value = clamped_value
+                            value_was_clamped = True
+                            # Set the clamped feedback flag immediately to prevent recursive calls
+                            item._clamped_feedback = True
+            
+            # NOW check if the parsed/validated value is actually different from current value
+            # Use proper numeric comparison to avoid spurious work
+            if isinstance(current_value, (int, float)) and isinstance(new_value, (int, float)):
+                # For numeric values, compare the actual numbers
+                if current_value == new_value:
+                    gui_logger.debug(f"Value unchanged for {item.name} (numeric comparison), skipping update")
+                    return
+            elif current_value == new_value:
+                # For non-numeric values, use direct comparison
+                gui_logger.debug(f"Value unchanged for {item.name} (direct comparison), skipping update")
+                return
+                
+            gui_logger.info(f"Value changed for {item.name}: {current_value} -> {new_value}")
+            
+            # Update the item's value with the parsed/validated value
+            item.value = new_value
+            
+            # If value was clamped, update the GUI display and show visual feedback
+            if value_was_clamped:
+                gui_logger.info(f"Updating GUI display for clamped value: {new_value}")
+                
+                # Use bulletproof method to write clamped value to cell
+                self._write_clamped_value_to_cell(item, new_value)
+                
+                gui_logger.info(f"GUI display updated - text: '{item.text(1)}', value: {item.value}")
+                
+                # Show notification about clamping
+                self._show_parameter_notification(f"Parameter {item.name} was clamped to {new_value}")
+                
+                # Continue with device update using the clamped value
 
-            # check if changes value is from an device
-            device, path_to_device = item.get_device()
-            if device is not None:
-                new_value = item.value
-                msg = "changed parameter {:s} to {:s} in {:s}".format(item.name,
+            gui_logger.debug(f"update_parameters called for tree: {type(treeWidget)}, item: {item.name}, column: {changed_col}")
+
+            if treeWidget == self.tree_settings:
+                gui_logger.debug("Updating parameters from tree_settings")
+
+                device, path_to_device = item.get_device()
+                gui_logger.debug(f"Updating device: {device.name}, path: {path_to_device}")
+                gui_logger.info(f"Device class: {type(device).__name__}, module: {type(device).__module__}")
+
+                # Store original values for comparison
+                requested_value = item.value
+                old_value = device.settings
+                path_to_device_copy = path_to_device.copy()
+                path_to_device_copy.reverse()
+                for element in path_to_device_copy:
+                    old_value = old_value[element]
+
+                # Build nested dictionary to update device
+                dictator = item.value
+                for element in path_to_device:
+                    dictator = {element: dictator}
+
+                try:
+                    # Use the enhanced feedback system if available
+                    if hasattr(device, 'get_feedback_only'):
+                        # Get detailed feedback about the update
+                        # Note: get_feedback_only already updates the device internally
+                        feedback = device.get_feedback_only(dictator)
+                        
+                        # Process feedback for each parameter
+                        for param_name, param_feedback in feedback.items():
+                            self._process_parameter_feedback(item, param_feedback, device.name, path_to_device)
+                    else:
+                        # Fallback to old method for devices without enhanced feedback
+                        self._update_device_with_validation(device, dictator, item, path_to_device)
+                        
+                        # Get actual value after update (in case device clamped it)
+                        actual_value = device.settings
+                        for element in path_to_device_copy:
+                            actual_value = actual_value[element]
+                        
+                        # Provide user feedback based on what happened
+                        self._provide_parameter_feedback(item, requested_value, actual_value, old_value, device.name)
+                    
+                except Exception as e:
+                    # Handle validation errors gracefully
+                    self._handle_parameter_error(item, str(e), device.name)
+                    return
+                
+            elif treeWidget == self.tree_experiments:
+                gui_logger.debug("Updating parameters from tree_experiments")
+                experiment, path_to_experiment, _ = item.get_experiment()
+                gui_logger.debug(f"Updating experiment: {experiment.name}, path: {path_to_experiment}")
+
+                # check if changes value is from an device
+                device, path_to_device = item.get_device()
+                if device is not None:
+                    new_value = item.value
+                    msg = "changed parameter {:s} to {:s} in {:s}".format(item.name,
+                                                                                    str(new_value),
+                                                                                    experiment.name)
+                    gui_logger.info(f"Device parameter updated: {item.name} to {new_value} in {experiment.name}")
+                else:
+                    new_value = item.value
+                    msg = "changed parameter {:s} to {:s} in {:s}".format(item.name,
                                                                                 str(new_value),
                                                                                 experiment.name)
-                gui_logger.info(f"Device parameter updated: {item.name} to {new_value} in {experiment.name}")
+                    gui_logger.info(f"Experiment parameter updated: {item.name} to {new_value} in {experiment.name}")
+                self.log(msg)
             else:
-                new_value = item.value
-                msg = "changed parameter {:s} to {:s} in {:s}".format(item.name,
-                                                                            str(new_value),
-                                                                            experiment.name)
-                gui_logger.info(f"Experiment parameter updated: {item.name} to {new_value} in {experiment.name}")
-            self.log(msg)
+                gui_logger.warning(f"Unknown tree widget type: {type(treeWidget)}")
+        
+        except Exception as e:
+            # Handle any unexpected errors in the parameter update process
+            gui_logger.error(f"Unexpected error in update_parameters: {e}")
+            self.log(f"Error updating parameters: {e}")
+        
+        finally:
+            # Always reset the recursion guard
+            self._updating_parameters = False
+
+    def _update_device_with_validation(self, device, settings_dict, item, path_to_device):
+        """
+        Update device with parameter validation and error handling.
+        
+        Args:
+            device: Device instance to update
+            settings_dict: Dictionary of settings to apply
+            item: Tree item being updated
+            path_to_device: Path to the parameter in device settings
+        """
+        try:
+            # Check if device has validation method
+            if hasattr(device, 'validate_parameter'):
+                gui_logger.info(f"Calling validate_parameter on {type(device).__name__} with path: {path_to_device}, value: {item.value}")
+                validation_result = device.validate_parameter(path_to_device, item.value)
+                gui_logger.info(f"Validation result: {validation_result}")
+                if not validation_result.get('valid', True):
+                    raise ValueError(validation_result.get('message', 'Parameter validation failed'))
+            else:
+                gui_logger.warning(f"Device {type(device).__name__} does not have validate_parameter method")
+            
+            # Update the device
+            device.update(settings_dict)
+            
+        except Exception as e:
+            gui_logger.error(f"Device update failed: {str(e)}")
+            raise
+
+    def _provide_parameter_feedback(self, item, requested_value, actual_value, old_value, device_name):
+        """
+        Provide visual and textual feedback for parameter changes.
+        
+        Args:
+            item: Tree item that was updated
+            requested_value: Value the user requested
+            actual_value: Value actually set by device
+            old_value: Previous value
+            device_name: Name of the device
+        """
+        # Determine what happened and provide appropriate feedback
+        if actual_value == requested_value:
+            # Value was accepted as-is
+            if actual_value != old_value:
+                msg = f"✅ Parameter {item.name} changed from {old_value} to {actual_value} on {device_name}"
+                gui_logger.info(f"Parameter updated successfully: {item.name} on {device_name}")
+                self._set_item_visual_feedback(item, 'success')
+            else:
+                msg = f"Parameter {item.name} unchanged on {device_name}"
+                gui_logger.debug(f"Parameter unchanged: {item.name} on {device_name}")
+                self._set_item_visual_feedback(item, 'normal')
         else:
-            gui_logger.warning(f"Unknown tree widget type: {type(treeWidget)}")
+            # Value was clamped by device
+            msg = f"⚠️ Parameter {item.name} clamped from {requested_value} to {actual_value} on {device_name}"
+            gui_logger.warning(f"Parameter clamped: {item.name} from {requested_value} to {actual_value} on {device_name}")
+            self._set_item_visual_feedback(item, 'warning')
+            
+            # Update the tree item to show the actual value
+            tw = item.treeWidget()
+            blocker = QSignalBlocker(tw)
+            try:
+                item.value = actual_value
+                item.setText(1, str(actual_value))
+            finally:
+                del blocker
+            
+            # Show notification to user
+            self._show_parameter_notification(f"Parameter {item.name} was clamped to {actual_value}")
+        
+        self.log(msg)
+
+    def _handle_parameter_error(self, item, error_message, device_name):
+        """
+        Handle parameter validation errors with user feedback.
+        
+        Args:
+            item: Tree item that failed validation
+            error_message: Error message from validation
+            device_name: Name of the device
+        """
+        msg = f"❌ Parameter {item.name} validation failed on {device_name}: {error_message}"
+        gui_logger.error(f"Parameter validation failed: {item.name} on {device_name} - {error_message}")
+        
+        # Set visual feedback for error
+        self._set_item_visual_feedback(item, 'error')
+        
+        # Show error notification
+        self._show_parameter_notification(f"Parameter {item.name} error: {error_message}", is_error=True)
+        
+        self.log(msg)
+
+    def _process_parameter_feedback(self, item, param_feedback, device_name, path_to_device):
+        """
+        Process enhanced parameter feedback from device.
+        
+        Args:
+            item: Tree item that was updated
+            param_feedback: Feedback dictionary from device
+            device_name: Name of the device
+            path_to_device: Path to the parameter in device settings
+        """
+        if not param_feedback.get('changed', False):
+            # Parameter was set successfully without changes
+            msg = f"✅ Parameter {item.name} set to {param_feedback['actual']} on {device_name}"
+            gui_logger.info(f"Parameter set successfully: {item.name} on {device_name}")
+            
+            # Don't override clamped feedback with success feedback
+            if not getattr(item, '_clamped_feedback', False):
+                self._set_item_visual_feedback(item, 'success')
+            else:
+                gui_logger.debug(f"Skipping success feedback for {item.name} - clamped feedback active")
+            
+            self._show_parameter_notification(f"Parameter {item.name} set successfully")
+        else:
+            # Parameter value changed - determine the reason
+            reason = param_feedback.get('reason', 'unknown')
+            message = param_feedback.get('message', 'Value changed')
+            actual_value = param_feedback.get('actual')
+            requested_value = param_feedback.get('requested')
+            
+            if reason == 'error':
+                # Hardware error
+                msg = f"❌ {device_name}: {message}"
+                gui_logger.error(f"Hardware error: {item.name} on {device_name} - {message}")
+                self._show_parameter_notification(f"Hardware error: {message}", is_error=True)
+                
+                # Update tree item to show actual value
+                if actual_value is not None:
+                    gui_logger.info(f"Updating GUI item {item.name} from {item.value} to {actual_value}")
+                    
+                    # Use improved GUI update logic
+                    view = item.treeWidget()
+                    index = view.indexFromItem(item, 1)
+
+                    # Prevent re-entry while we sync editor/model
+                    self._programmatic_update = True
+                    try:
+                        # If the cell is being edited, update the editor widget text and commit it
+                        if view.state() == QtWidgets.QAbstractItemView.EditingState and index == view.currentIndex():
+                            editor = view.focusWidget()
+                            if editor is not None and hasattr(editor, "setText"):
+                                editor.setText(str(actual_value))
+                                # commit editor back to model to avoid stale overwrite
+                                try:
+                                    view.closeEditor(editor, QtWidgets.QAbstractItemDelegate.SubmitModelCache)
+                                except AttributeError:
+                                    # Fallback if closeEditor is not available
+                                    view.viewport().setFocus(QtCore.Qt.OtherFocusReason)
+
+                        # Update the model value via EditRole so the view/editor stay in sync
+                        view.model().setData(index, actual_value, QtCore.Qt.EditRole)
+
+                        # Keep your internal mirror
+                        item.value = actual_value
+
+                    finally:
+                        self._programmatic_update = False
+                    
+                    gui_logger.info(f"GUI item {item.name} updated successfully")
+                    
+            elif reason == 'clamped':
+                # Value was clamped by hardware limits
+                msg = f"⚠️ {device_name}: {message}"
+                gui_logger.warning(f"Parameter clamped: {item.name} on {device_name} - {message}")
+                self._show_parameter_notification(f"Parameter clamped: {message}")
+                
+                # Update tree item to show actual value
+                if actual_value is not None:
+                    gui_logger.info(f"Updating GUI item {item.name} from {item.value} to {actual_value}")
+                    
+                    # Use improved GUI update logic
+                    view = item.treeWidget()
+                    index = view.indexFromItem(item, 1)
+
+                    # Prevent re-entry while we sync editor/model
+                    self._programmatic_update = True
+                    try:
+                        # If the cell is being edited, update the editor widget text and commit it
+                        if view.state() == QtWidgets.QAbstractItemView.EditingState and index == view.currentIndex():
+                            editor = view.focusWidget()
+                            if editor is not None and hasattr(editor, "setText"):
+                                editor.setText(str(actual_value))
+                                # commit editor back to model to avoid stale overwrite
+                                try:
+                                    view.closeEditor(editor, QtWidgets.QAbstractItemDelegate.SubmitModelCache)
+                                except AttributeError:
+                                    # Fallback if closeEditor is not available
+                                    view.viewport().setFocus(QtCore.Qt.OtherFocusReason)
+
+                        # Update the model value via EditRole so the view/editor stay in sync
+                        view.model().setData(index, actual_value, QtCore.Qt.EditRole)
+
+                        # Keep your internal mirror
+                        item.value = actual_value
+
+                    finally:
+                        self._programmatic_update = False
+                    
+                    gui_logger.info(f"GUI item {item.name} updated successfully")
+                    
+            else:
+                # Unknown reason for change
+                msg = f"⚠️ {device_name}: {message}"
+                gui_logger.warning(f"Parameter changed: {item.name} on {device_name} - {message}")
+                self._show_parameter_notification(f"Parameter changed: {message}")
+                
+                # Update tree item to show actual value
+                if actual_value is not None:
+                    gui_logger.info(f"Updating GUI item {item.name} from {item.value} to {actual_value}")
+                    
+                    # Use improved GUI update logic
+                    view = item.treeWidget()
+                    index = view.indexFromItem(item, 1)
+
+                    # Prevent re-entry while we sync editor/model
+                    self._programmatic_update = True
+                    try:
+                        # If the cell is being edited, update the editor widget text and commit it
+                        if view.state() == QtWidgets.QAbstractItemView.EditingState and index == view.currentIndex():
+                            editor = view.focusWidget()
+                            if editor is not None and hasattr(editor, "setText"):
+                                editor.setText(str(actual_value))
+                                # commit editor back to model to avoid stale overwrite
+                                try:
+                                    view.closeEditor(editor, QtWidgets.QAbstractItemDelegate.SubmitModelCache)
+                                except AttributeError:
+                                    # Fallback if closeEditor is not available
+                                    view.viewport().setFocus(QtCore.Qt.OtherFocusReason)
+
+                        # Update the model value via EditRole so the view/editor stay in sync
+                        view.model().setData(index, actual_value, QtCore.Qt.EditRole)
+
+                        # Keep your internal mirror
+                        item.value = actual_value
+
+                    finally:
+                        self._programmatic_update = False
+                    
+                    gui_logger.info(f"GUI item {item.name} updated successfully")
+        
+        self.log(msg)
+
+    def _handle_delegate_validation_result(self, item, param_name, result):
+        """
+        Handles validation results from the NumberClampDelegate.
+        This provides visual feedback, logging, and GUI history updates.
+        """
+        gui_logger.debug(f"Received delegate validation result for {item.name}: {result}")
+        
+        # Update the item's display text if the actual value is different
+        if result.get('actual_value') is not None and result.get('actual_value') != result.get('requested_value'):
+            # Update the display text to show the actual value
+            item.setText(1, str(result['actual_value']))
+            item.value = result['actual_value']
+        
+        # Set visual feedback using the new model-based approach
+        reason = result.get('reason', 'unknown')
+        gui_logger.info(f"MAIN WINDOW: Processing delegate result for {item.name}, reason: {reason}")
+        
+        # Map reason to visual feedback status
+        if reason == 'clamped':
+            feedback_status = 'clamped'
+        elif reason == 'error':
+            feedback_status = 'error'
+        elif reason in ['success', 'device_different']:
+            feedback_status = 'success'
+        else:
+            feedback_status = None
+        
+        # Apply visual feedback if we have a status
+        if feedback_status:
+            gui_logger.debug(f"MAIN WINDOW: Applying visual feedback '{feedback_status}' for item {item.name}")
+            
+            # Find the index for this item
+            tree_widget = None
+            for tree in [self.tree_settings, self.tree_experiments]:
+                # Check if this item belongs to this tree
+                if tree.indexOfTopLevelItem(item) >= 0:
+                    tree_widget = tree
+                    gui_logger.debug(f"MAIN WINDOW: Found item {item.name} in tree {tree.objectName()}")
+                    break
+            
+            if tree_widget:
+                # Find the index for the value column (column 1)
+                item_index = tree_widget.indexFromItem(item, 1)
+                gui_logger.debug(f"MAIN WINDOW: Item index for {item.name}: {item_index.isValid()}")
+                
+                if item_index.isValid():
+                    # Get the delegate and use its _color_index method
+                    delegate = tree_widget.itemDelegateForColumn(1)
+                    gui_logger.debug(f"MAIN WINDOW: Delegate type: {type(delegate)}")
+                    
+                    if hasattr(delegate, '_color_index'):
+                        gui_logger.debug(f"MAIN WINDOW: Calling _color_index for {item.name} with status '{feedback_status}'")
+                        delegate._color_index(tree_widget, item_index, feedback_status)
+                    else:
+                        gui_logger.warning(f"MAIN WINDOW: Delegate {type(delegate)} does not have _color_index method")
+                else:
+                    gui_logger.warning(f"MAIN WINDOW: Invalid index for item {item.name}")
+            else:
+                gui_logger.warning(f"MAIN WINDOW: Could not find tree widget for item {item.name}")
+        
+        # Log the message to GUI history
+        message = result.get('message', 'Parameter validation completed')
+        self.log(message)
+        
+        # Show notification
+        is_error = reason == 'error'
+        self._show_parameter_notification(message, is_error=is_error)
+
+
+    def _show_parameter_notification(self, message, is_error=False):
+        """
+        Show a notification to the user about parameter changes.
+        
+        Args:
+            message: Message to display
+            is_error: Whether this is an error message
+        """
+        # Log the message
+        if is_error:
+            gui_logger.error(f"Parameter notification (ERROR): {message}")
+        else:
+            gui_logger.info(f"Parameter notification: {message}")
+        
+        # Show visual notification to user
+        self._show_visual_notification(message, is_error)
+    
+    def _show_visual_notification(self, message, is_error=False):
+        """
+        Show visual notification to user (popup only for critical errors).
+        
+        Args:
+            message: Message to display
+            is_error: Whether this is an error message
+        """
+        try:
+            if is_error:
+                # Only show popup for critical hardware errors
+                msg_box = QtWidgets.QMessageBox()
+                msg_box.setIcon(QtWidgets.QMessageBox.Critical)
+                msg_box.setWindowTitle("Hardware Error")
+                msg_box.setText("Hardware Error Detected")
+                msg_box.setInformativeText(message)
+                msg_box.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                msg_box.exec_()
+            else:
+                # For non-critical messages, just rely on:
+                # - Log messages (already handled in _show_parameter_notification)
+                # - Visual feedback on tree items (colored backgrounds)
+                # - Status bar updates (if available)
+                pass
+                
+        except Exception as e:
+            # Fallback to logging if GUI notification fails
+            gui_logger.warning(f"Failed to show visual notification: {e}")
+            gui_logger.info(f"Notification message: {message}")
+
+    def _get_parameter_ranges(self, device, path_to_device):
+        """
+        Get valid parameter ranges for a device parameter.
+        
+        Args:
+            device: Device instance
+            path_to_device: Path to the parameter in device settings
+            
+        Returns:
+            dict: Dictionary with 'min', 'max', 'valid_values' keys
+        """
+        try:
+            if hasattr(device, 'get_parameter_ranges'):
+                return device.get_parameter_ranges(path_to_device)
+            
+            # Fallback: try to get ranges from Parameter object
+            param_obj = device.settings
+            for element in path_to_device:
+                if hasattr(param_obj, element):
+                    param_obj = getattr(param_obj, element)
+                else:
+                    return {}
+            
+            if hasattr(param_obj, 'valid_values'):
+                if isinstance(param_obj.valid_values, list):
+                    return {'valid_values': param_obj.valid_values}
+                elif hasattr(param_obj.valid_values, '__bases__') and param_obj.valid_values in (int, float):
+                    # For numeric types, we could try to infer ranges from Parameter info
+                    return {'type': param_obj.valid_values}
+            
+            return {}
+        except Exception as e:
+            gui_logger.debug(f"Could not get parameter ranges: {e}")
+            return {}
+
+    def _add_parameter_tooltip(self, item, device, path_to_device):
+        """
+        Add informative tooltip to parameter item showing valid ranges.
+        
+        Args:
+            item: Tree item to add tooltip to
+            device: Device instance
+            path_to_device: Path to the parameter
+        """
+        try:
+            ranges = self._get_parameter_ranges(device, path_to_device)
+            tooltip_parts = [f"Parameter: {item.name}"]
+            
+            if 'valid_values' in ranges:
+                tooltip_parts.append(f"Valid values: {ranges['valid_values']}")
+            elif 'min' in ranges and 'max' in ranges:
+                tooltip_parts.append(f"Range: {ranges['min']} to {ranges['max']}")
+            elif 'type' in ranges:
+                tooltip_parts.append(f"Type: {ranges['type'].__name__}")
+            
+            # Add current value
+            tooltip_parts.append(f"Current: {item.value}")
+            
+            tooltip_text = "\n".join(tooltip_parts)
+            item.setToolTip(1, tooltip_text)
+            
+        except Exception as e:
+            gui_logger.debug(f"Could not add tooltip: {e}")
+
 
     def plot_experiment(self, experiment):
         """
@@ -1701,7 +2478,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if tree == self.tree_experiments or tree == self.tree_settings:
             tree.itemChanged.disconnect()
             self.fill_treewidget(tree, items)
-            tree.itemChanged.connect(lambda: self.update_parameters(tree))
+            tree.itemChanged.connect(
+                lambda item, col: self.update_parameters(tree, item, col)
+            )
         elif tree == self.tree_gui_settings:
             self.fill_treeview(tree, items)
 

@@ -147,6 +147,26 @@ class MockSG384Generator(Device):
         """Set modulation type."""
         print(f"Mock SG384Generator: Set modulation type to {mtype}")
     
+    def set_sweep_deviation(self, deviation_hz: float):
+        """Set sweep deviation."""
+        self.settings['sweep_deviation'] = deviation_hz
+        print(f"Mock SG384Generator: Set sweep deviation to {deviation_hz/1e6:.1f} MHz")
+    
+    def set_sweep_function(self, function: str):
+        """Set sweep function."""
+        self.settings['sweep_function'] = function
+        print(f"Mock SG384Generator: Set sweep function to {function}")
+    
+    def set_sweep_rate(self, rate_hz: float):
+        """Set sweep rate."""
+        self.settings['sweep_rate'] = rate_hz
+        print(f"Mock SG384Generator: Set sweep rate to {rate_hz:.3f} Hz")
+    
+    def enable_output(self):
+        """Enable output."""
+        self.settings['enable_output'] = True
+        print("Mock SG384Generator: Output enabled")
+    
     def set_modulation_depth(self, depth_hz: float):
         """Set modulation depth."""
         print(f"Mock SG384Generator: Set modulation depth to {depth_hz} Hz")
@@ -192,6 +212,130 @@ class MockSG384Generator(Device):
     def close(self):
         """Close connection."""
         print("Mock SG384Generator: Closed")
+    
+    def validate_parameter(self, path, value):
+        """
+        Enhanced parameter validation for MockSG384Generator with hardware-specific limits.
+        Uses get_parameter_ranges to avoid duplication and ensure consistency.
+        
+        Args:
+            path: List of strings representing the path to the parameter
+            value: The value to validate
+            
+        Returns:
+            dict: Validation result with 'valid', 'message', and optional 'clamped_value'
+        """
+        # First, try the base class validation
+        base_result = super().validate_parameter(path, value)
+        if not base_result['valid']:
+            return base_result
+        
+        # Get parameter ranges to avoid duplication
+        ranges = self.get_parameter_ranges(path)
+        if not ranges:
+            return {'valid': True, 'message': 'Mock SG384 parameter validation passed'}
+        
+        # Get the parameter name from the path
+        param_name = path[-1] if path else None
+        
+        # Validate against the ranges
+        if 'min' in ranges and 'max' in ranges:
+            min_val = ranges['min']
+            max_val = ranges['max']
+            units = ranges.get('units', '')
+            
+            if value < min_val:
+                clamped_value = min_val
+                if param_name == 'frequency':
+                    message = f"Frequency {value/1e9:.3f} GHz below minimum {min_val/1e9:.3f} GHz"
+                elif param_name == 'modulation_depth':
+                    message = f"Modulation depth {value/1e6:.1f} MHz below minimum {min_val/1e6:.1f} MHz"
+                else:
+                    message = f"{param_name} {value} {units} below minimum {min_val} {units}"
+                
+                return {
+                    'valid': False,
+                    'message': message,
+                    'clamped_value': clamped_value
+                }
+            elif value > max_val:
+                clamped_value = max_val
+                if param_name == 'frequency':
+                    message = f"Frequency {value/1e9:.3f} GHz above maximum {max_val/1e9:.3f} GHz"
+                elif param_name == 'modulation_depth':
+                    message = f"Modulation depth {value/1e6:.1f} MHz above maximum {max_val/1e6:.1f} MHz"
+                else:
+                    message = f"{param_name} {value} {units} above maximum {max_val} {units}"
+                
+                return {
+                    'valid': False,
+                    'message': message,
+                    'clamped_value': clamped_value
+                }
+        
+        # Special case for sweep_rate (must be less than max, not less than or equal)
+        if param_name == 'sweep_rate' and 'max' in ranges:
+            max_rate = ranges['max']
+            if value >= max_rate:
+                return {
+                    'valid': False,
+                    'message': f"Sweep rate {value} Hz must be less than {max_rate} Hz",
+                    'clamped_value': max_rate - 0.1
+                }
+        
+        return {'valid': True, 'message': 'Mock SG384 parameter validation passed'}
+    
+    def get_parameter_ranges(self, path):
+        """
+        Get parameter ranges specific to MockSG384Generator hardware.
+        
+        Args:
+            path: List of strings representing the path to the parameter
+            
+        Returns:
+            dict: Parameter range information
+        """
+        param_name = path[-1] if path else None
+        
+        ranges = {
+            'frequency': {
+                'min': 1.9e9,
+                'max': 4.1e9,
+                'type': float,
+                'units': 'Hz',
+                'info': 'RF frequency range: 1.9-4.1 GHz'
+            },
+            'power': {
+                'min': -120.0,
+                'max': 13.0,
+                'type': float,
+                'units': 'dBm',
+                'info': 'RF power range: -120 to +13 dBm'
+            },
+            'sweep_rate': {
+                'min': 0.001,
+                'max': 119.9,
+                'type': float,
+                'units': 'Hz',
+                'info': 'Sweep rate: 0.001 to 119.9 Hz'
+            },
+            'modulation_depth': {
+                'min': 0.0,
+                'max': 1e8,
+                'type': float,
+                'units': 'Hz',
+                'info': 'Modulation depth: 0 to 100 MHz'
+            },
+            'phase': {
+                'min': 0.0,
+                'max': 360.0,
+                'type': float,
+                'units': 'degrees',
+                'info': 'Phase: 0 to 360 degrees'
+            }
+        }
+        
+        return ranges.get(param_name, {})
 
 class MockNI6229(Device):
     """Mock NI6229 device that subclasses from Device."""

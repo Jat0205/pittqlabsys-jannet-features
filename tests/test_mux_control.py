@@ -19,7 +19,6 @@ class TestMUXControlDevice:
     def mock_visa_resource(self):
         """Mock VISA resource for testing."""
         mock_resource = Mock()
-        mock_resource.baud_rate = 9600
         mock_resource.timeout = 5000
         mock_resource.write_termination = '\n'
         mock_resource.read_termination = '\n'

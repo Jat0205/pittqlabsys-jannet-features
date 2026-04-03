@@ -1,4 +1,4 @@
-<ADbasic Header, Headerversion 001.001>
+'<ADbasic Header, Headerversion 001.001>
 ' Process_Number                 = 1
 ' Initial_Processdelay           = 1000
 ' Eventsource                    = Timer
@@ -9,8 +9,8 @@
 ' Optimize                       = Yes
 ' Optimize_Level                 = 1
 ' Stacksize                      = 1000
-' Info_Last_Save                 = DUTTLAB8  Duttlab8\Duttlab
-<Header End>
+' Info_Last_Save                 = SINGLENV-PC-1  SINGLENV-PC-1\Duttlab
+'<Header End>
 ' AWG520_Trigger_Test.bas
 ' This process generates trigger pulses to control AWG520 external triggering
 ' for testing the ADwin→AWG520 control architecture.
@@ -24,7 +24,7 @@
 ' - Process generates trigger pulses at specified intervals
 ' - Each trigger causes AWG520 to advance to next sequence line
 ' - Computer can control timing and number of triggers via parameters
-
+' This is the new approach: adwin triggers awg to move to next task/line
 
 #Include ADwinGoldII.inc
 DIM trigger_counter AS LONG
@@ -67,14 +67,14 @@ event:
       GOTO finish
     ENDIF
     
-  ELSEIF current_state = 1 THEN
+    ELSEIF current_state = 1 THEN
     ' Trigger high state - wait for pulse duration
     CPU_Sleep(trigger_duration)
     DIGOUT(0, 0)                ' Set trigger low
     current_state = 2
     Par_5 = current_state
     
-  ELSEIF current_state = 2 THEN
+    ELSEIF current_state = 2 THEN
     ' Trigger low state - wait for interval before next trigger
     CPU_Sleep(trigger_interval - trigger_duration)
     trigger_counter = trigger_counter + 1
