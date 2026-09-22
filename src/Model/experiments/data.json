@@ -1,0 +1,9 @@
+{
+    "experiment_name": "CONFOCAL",
+    "DATE": "10-07-2025",
+    "Finished": false,
+    "saples": [
+        "nanodiamond_01",
+        "nanodiamond_02"
+    ]
+}

@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-05-19T21:05:34.916006",
+  "frequencies": [
+    {
+      "frequency_hz": 2700000000.0,
+      "q_amplitude_b": 0.9,
+      "best_irr_db": -24.52,
+      "phase_phi_deg": -135.0,
+      "i_dc_offset_set_V": -0.0010000000000000009,
+      "q_dc_offset_set_V": -0.0010000000000000009
+    },
+    {
+      "frequency_hz": 2870000000.0,
+      "q_amplitude_b": 0.9,
+      "best_irr_db": -27.689999999999998,
+      "phase_phi_deg": 90.0,
+      "i_dc_offset_set_V": -0.0010000000000000009,
+      "q_dc_offset_set_V": -0.0010000000000000009
+    },
+    {
+      "frequency_hz": 3000000000.0,
+      "q_amplitude_b": 0.8,
+      "best_irr_db": -33.51,
+      "phase_phi_deg": 45.0,
+      "i_dc_offset_set_V": -0.0010000000000000009,
+      "q_dc_offset_set_V": -0.0010000000000000009
+    }
+  ],
+  "q_amplitude_correction_default": 0.8666666666666667
+}
