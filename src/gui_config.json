@@ -1,0 +1,674 @@
+{
+    "gui_settings": {
+        "experiments_folder": "",
+        "data_folder": ""
+    },
+    "experiments_hidden_parameters": {
+        "NanodriveAdwinConfocalPoint": {
+            "Current_Position": false,
+            "keyboard_control_nanodrive": {
+                "keyboard_control_on": false,
+                "x_neg_key": false,
+                "x_pos_key": false,
+                "x_step": false,
+                "y_neg_key": false,
+                "y_pos_key": false,
+                "y_step": false,
+                "z_pos_key": false,
+                "z_neg_key": false,
+                "z_step": false,
+                "return_to_start_key": false,
+                "settle_time": false
+            },
+            "automated_optimization": {
+                "automated_optimization_on": false,
+                "xstep": false,
+                "ystep": false,
+                "zstep": false,
+                "settle_time": false,
+                "min_retention_ratio": false,
+                "damping_ratio": false,
+                "Continuous_optimization_on": false,
+                "acceptable_counts": false,
+                "acceptable_counts_ratio": false,
+                "min_reoptimize_ratio": false
+            },
+            "point": {
+                "x": false,
+                "y": false,
+                "z": false
+            },
+            "MICROWAVE": {
+                "enable": false,
+                "frequency": false,
+                "power": false,
+                "MW off after experiment?": false
+            },
+            "LASER": {
+                "Filter Wheel OD": false,
+                "Laser Control": false,
+                "Laser off after experiment?": false
+            },
+            "count_time": false,
+            "num_cycles": false,
+            "plot_avg": false,
+            "continuous": false,
+            "graph_params": {
+                "plot_raw_counts": false,
+                "refresh_rate": false,
+                "length_data": false,
+                "font_size": false
+            },
+            "laser_clock": false,
+            "sample": false,
+            "path": false,
+            "tag": false,
+            "save": false,
+            "copy_prior_experiment": {
+                "enable": false,
+                "hdf5_path": false
+            },
+            "nanodrive": {
+                "instance": true,
+                "settings": {
+                    "get_data": false,
+                    "serial": false,
+                    "x_pos": false,
+                    "y_pos": false,
+                    "z_pos": false,
+                    "read_rate": false,
+                    "load_rate": false,
+                    "num_datapoints": false,
+                    "axis": false,
+                    "load_waveform": false,
+                    "read_waveform": false,
+                    "mult_ax": {
+                        "waveform": false,
+                        "time_step": false,
+                        "iterations": false
+                    },
+                    "Pixel": {
+                        "mode": false,
+                        "polarity": false,
+                        "binding": false,
+                        "pulse": false
+                    },
+                    "Line": {
+                        "mode": false,
+                        "polarity": false,
+                        "binding": false,
+                        "pulse": false
+                    },
+                    "Frame": {
+                        "mode": false,
+                        "polarity": false,
+                        "binding": false,
+                        "pulse": false
+                    },
+                    "Aux": {
+                        "mode": false,
+                        "polarity": false,
+                        "binding": false,
+                        "pulse": false
+                    },
+                    "server_port": false
+                }
+            },
+            "adwin": {
+                "instance": true,
+                "settings": {
+                    "get_data": false,
+                    "process_1": {
+                        "load": false,
+                        "delay": false,
+                        "running": false
+                    },
+                    "process_2": {
+                        "load": false,
+                        "delay": false,
+                        "running": false
+                    },
+                    "process_3": {
+                        "load": false,
+                        "delay": false,
+                        "running": false
+                    },
+                    "process_4": {
+                        "load": false,
+                        "delay": false,
+                        "running": false
+                    },
+                    "process_5": {
+                        "load": false,
+                        "delay": false,
+                        "running": false
+                    },
+                    "process_6": {
+                        "load": false,
+                        "delay": false,
+                        "running": false
+                    },
+                    "process_7": {
+                        "load": false,
+                        "delay": false,
+                        "running": false
+                    },
+                    "process_8": {
+                        "load": false,
+                        "delay": false,
+                        "running": false
+                    },
+                    "process_9": {
+                        "load": false,
+                        "delay": false,
+                        "running": false
+                    },
+                    "process_10": {
+                        "load": false,
+                        "delay": false,
+                        "running": false
+                    }
+                }
+            },
+            "sg384": {
+                "instance": true,
+                "settings": {
+                    "get_data": false,
+                    "connection_type": false,
+                    "ip_address": false,
+                    "port": false,
+                    "connection_timeout": false,
+                    "socket_timeout": false,
+                    "visa_resource": false,
+                    "baud_rate": false,
+                    "frequency": false,
+                    "power": false,
+                    "phase": false,
+                    "amplitude": false,
+                    "enable_output": false,
+                    "enable_modulation": false,
+                    "modulation_type": false,
+                    "modulation_function": false,
+                    "pulse_modulation_function": false,
+                    "modulation_depth": false,
+                    "dev_width": false,
+                    "mod_rate": false,
+                    "sweep_function": false,
+                    "sweep_rate": false,
+                    "sweep_deviation": false,
+                    "sweep_center_frequency": false,
+                    "sweep_max_frequency": false,
+                    "sweep_min_frequency": false
+                }
+            },
+            "proteus": {
+                "instance": true,
+                "settings": {
+                    "get_data": false,
+                    "ip_address": false,
+                    "slot_id": false
+                }
+            },
+            "filter_wheel": {
+                "instance": true,
+                "settings": {
+                    "get_data": false,
+                    "connection_type": false,
+                    "port": false,
+                    "OD": false,
+                    "position": false,
+                    "server_port": false
+                }
+            }
+        }
+    },
+    "devices": {
+        "sg384": {
+            "class": "SG384Generator",
+            "filepath": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\Controller\\sg384.py",
+            "info": "\n    Stanford Research Systems SG384 concrete implementation.\n    Adds any SG384-specific settings and maps them to SCPI.\n    ",
+            "settings": {
+                "get_data": false,
+                "connection_type": "LAN",
+                "ip_address": "192.168.2.217",
+                "port": 5025,
+                "connection_timeout": 10.0,
+                "socket_timeout": 5.0,
+                "visa_resource": "",
+                "baud_rate": 115200,
+                "frequency": 1000000000.0,
+                "power": -10,
+                "phase": 0,
+                "amplitude": -10,
+                "enable_output": false,
+                "enable_modulation": true,
+                "modulation_type": "FM",
+                "modulation_function": "Sine",
+                "pulse_modulation_function": "Square",
+                "modulation_depth": 1000000.0,
+                "dev_width": 1000000.0,
+                "mod_rate": 10000000.0,
+                "sweep_function": "Triangle",
+                "sweep_rate": 1.0,
+                "sweep_deviation": 1000000.0,
+                "sweep_center_frequency": 2870000000.0,
+                "sweep_max_frequency": 4100000000.0,
+                "sweep_min_frequency": 1900000000.0
+            }
+        },
+        "proteus": {
+            "class": "ProteusDevice",
+            "filepath": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\Controller\\Proteus_device.py",
+            "info": "Device wrapper for Proteus awg using Device framework.",
+            "settings": {
+                "get_data": false,
+                "ip_address": "192.168.2.4",
+                "slot_id": 3
+            }
+        },
+        "filter_wheel": {
+            "class": "Thorlabs_FW102C",
+            "filepath": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\Controller\\Thorlabs_FW102C_Filter_Wheel.py",
+            "info": null,
+            "settings": {
+                "get_data": true,
+                "connection_type": "RS232",
+                "port": "COM18",
+                "OD": 0,
+                "position": 1,
+                "server_port": 5001
+            }
+        },
+        "adwin": {
+            "class": "AdwinGoldDevice",
+            "filepath": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\Controller\\adwin_gold.py",
+            "info": "\n    This class implements the ADwin Gold II by booting it with the T11 processor. It does not yet implement TiCO processes.\n    Processes should be written in an ADbasic script and then loaded using this controller (note the inital processes delay set in each script).\n    The processor and priority can be changed for each process and is left to the user writing the ADbasic script.\n    ",
+            "settings": {
+                "get_data": false,
+                "process_1": {
+                    "load": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\Controller\\binary_files\\ADbasic\\Averagable_Trial_Counter.TB1",
+                    "delay": 606061,
+                    "running": false
+                },
+                "process_2": {
+                    "load": "",
+                    "delay": 3000,
+                    "running": false
+                },
+                "process_3": {
+                    "load": "",
+                    "delay": 3000,
+                    "running": false
+                },
+                "process_4": {
+                    "load": "",
+                    "delay": 3000,
+                    "running": false
+                },
+                "process_5": {
+                    "load": "",
+                    "delay": 3000,
+                    "running": false
+                },
+                "process_6": {
+                    "load": "",
+                    "delay": 3000,
+                    "running": false
+                },
+                "process_7": {
+                    "load": "",
+                    "delay": 3000,
+                    "running": false
+                },
+                "process_8": {
+                    "load": "",
+                    "delay": 3000,
+                    "running": false
+                },
+                "process_9": {
+                    "load": "",
+                    "delay": 3000,
+                    "running": false
+                },
+                "process_10": {
+                    "load": "",
+                    "delay": 3000,
+                    "running": false
+                }
+            }
+        },
+        "nanodrive": {
+            "class": "MCLNanoDrive",
+            "filepath": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\Controller\\nanodrive.py",
+            "info": "\n    This class implements the Mad City Labs NanoDrive. The class loads the madlib.dll library to communicate with the device.\n    ",
+            "settings": {
+                "get_data": false,
+                "serial": 2849,
+                "x_pos": 42.5536417476152,
+                "y_pos": 52.62195150979099,
+                "z_pos": 48.79365032444872,
+                "read_rate": 2.0,
+                "load_rate": 2.0,
+                "num_datapoints": 1,
+                "axis": "x",
+                "load_waveform": [
+                    0
+                ],
+                "read_waveform": [
+                    0
+                ],
+                "mult_ax": {
+                    "waveform": [
+                        [
+                            0
+                        ],
+                        [
+                            0
+                        ],
+                        [
+                            0
+                        ]
+                    ],
+                    "time_step": 1.0,
+                    "iterations": 1
+                },
+                "Pixel": {
+                    "mode": "low",
+                    "polarity": "low-to-high",
+                    "binding": "read",
+                    "pulse": false
+                },
+                "Line": {
+                    "mode": "low",
+                    "polarity": "low-to-high",
+                    "binding": "load",
+                    "pulse": false
+                },
+                "Frame": {
+                    "mode": "low",
+                    "polarity": "low-to-high",
+                    "binding": "none",
+                    "pulse": false
+                },
+                "Aux": {
+                    "mode": "low",
+                    "polarity": "low-to-high",
+                    "binding": "none",
+                    "pulse": false
+                },
+                "server_port": 5001
+            }
+        },
+        "microdrive": {
+            "class": "Newport_CONEX_CC_xy_stage",
+            "filepath": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\Controller\\newport_conex_cc.py",
+            "info": null,
+            "settings": {
+                "get_data": false,
+                "connection_type": "SERIAL",
+                "xport": 14,
+                "x-address": 1,
+                "yport": 15,
+                "y-address": 1,
+                "x-position": 0,
+                "y-position": 0,
+                "server_port": 5004
+            }
+        },
+        "mux_control": {
+            "class": "MUXControlDevice",
+            "filepath": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\Controller\\mux_control.py",
+            "info": "\n    Device wrapper for MUX controller.\n    \n    The MUX controller uses a multiplexer to switch between\n    3 different trigger sources:\n    1. Confocal trigger - from MCL nanodrive\n    2. CW-ESR trigger - from PTS Arduino  (old setup)\n    3. Pulsed ESR trigger - from AWG\n    - Commands: \"1\"=confocal, \"2\"=cw-esr, \"3\"=pulsed\n    ",
+            "settings": {
+                "get_data": false,
+                "ip_address": "192.168.2.85",
+                "port": 502,
+                "timeout": 5000,
+                "auto_connect": true
+            }
+        }
+    },
+    "experiments": {
+        "NanodriveAdwinConfocalPoint": {
+            "class": "NanodriveAdwinConfocalPoint",
+            "filepath": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\Model\\experiments\\nanodrive_adwin_confocal_point.py",
+            "info": "\n    Single-point confocal microscope measurements using MCL NanoDrive and ADwin Gold II.\n    \n    This class implements a confocal microscope to get the counts at a single point. \n    It uses the MCL NanoDrive to move the sample stage and the ADwin Gold to get \n    count data. The 'continuous' parameter if false will return 1 data point. \n    If true it offers live counting that continues until the stop button is clicked.\n\n    Hardware Dependencies:\n    - MCL NanoDrive: For precise sample stage positioning\n    - ADwin Gold II: For photon counting and timing control\n    - ADbasic Binary: Averagable_Trial_Counter.TB1 for counter operations\n    ",
+            "package": "Model",
+            "devices": {
+                "nanodrive": {
+                    "class": "MCLNanoDrive",
+                    "settings": {
+                        "get_data": false,
+                        "serial": 2849,
+                        "x_pos": 42.5536417476152,
+                        "y_pos": 52.62195150979099,
+                        "z_pos": 48.79365032444872,
+                        "read_rate": 2.0,
+                        "load_rate": 2.0,
+                        "num_datapoints": 1,
+                        "axis": "x",
+                        "load_waveform": [
+                            0
+                        ],
+                        "read_waveform": [
+                            0
+                        ],
+                        "mult_ax": {
+                            "waveform": [
+                                [
+                                    0
+                                ],
+                                [
+                                    0
+                                ],
+                                [
+                                    0
+                                ]
+                            ],
+                            "time_step": 1.0,
+                            "iterations": 1
+                        },
+                        "Pixel": {
+                            "mode": "low",
+                            "polarity": "low-to-high",
+                            "binding": "read",
+                            "pulse": false
+                        },
+                        "Line": {
+                            "mode": "low",
+                            "polarity": "low-to-high",
+                            "binding": "load",
+                            "pulse": false
+                        },
+                        "Frame": {
+                            "mode": "low",
+                            "polarity": "low-to-high",
+                            "binding": "none",
+                            "pulse": false
+                        },
+                        "Aux": {
+                            "mode": "low",
+                            "polarity": "low-to-high",
+                            "binding": "none",
+                            "pulse": false
+                        },
+                        "server_port": 5001
+                    }
+                },
+                "adwin": {
+                    "class": "AdwinGoldDevice",
+                    "settings": {
+                        "get_data": false,
+                        "process_1": {
+                            "load": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\Controller\\binary_files\\ADbasic\\Averagable_Trial_Counter.TB1",
+                            "delay": 606061,
+                            "running": false
+                        },
+                        "process_2": {
+                            "load": "",
+                            "delay": 3000,
+                            "running": false
+                        },
+                        "process_3": {
+                            "load": "",
+                            "delay": 3000,
+                            "running": false
+                        },
+                        "process_4": {
+                            "load": "",
+                            "delay": 3000,
+                            "running": false
+                        },
+                        "process_5": {
+                            "load": "",
+                            "delay": 3000,
+                            "running": false
+                        },
+                        "process_6": {
+                            "load": "",
+                            "delay": 3000,
+                            "running": false
+                        },
+                        "process_7": {
+                            "load": "",
+                            "delay": 3000,
+                            "running": false
+                        },
+                        "process_8": {
+                            "load": "",
+                            "delay": 3000,
+                            "running": false
+                        },
+                        "process_9": {
+                            "load": "",
+                            "delay": 3000,
+                            "running": false
+                        },
+                        "process_10": {
+                            "load": "",
+                            "delay": 3000,
+                            "running": false
+                        }
+                    }
+                },
+                "sg384": {
+                    "class": "SG384Generator",
+                    "settings": {
+                        "get_data": false,
+                        "connection_type": "LAN",
+                        "ip_address": "192.168.2.217",
+                        "port": 5025,
+                        "connection_timeout": 10.0,
+                        "socket_timeout": 5.0,
+                        "visa_resource": "",
+                        "baud_rate": 115200,
+                        "frequency": 1000000000.0,
+                        "power": -10,
+                        "phase": 0,
+                        "amplitude": -10,
+                        "enable_output": false,
+                        "enable_modulation": true,
+                        "modulation_type": "FM",
+                        "modulation_function": "Sine",
+                        "pulse_modulation_function": "Square",
+                        "modulation_depth": 1000000.0,
+                        "dev_width": 1000000.0,
+                        "mod_rate": 10000000.0,
+                        "sweep_function": "Triangle",
+                        "sweep_rate": 1.0,
+                        "sweep_deviation": 1000000.0,
+                        "sweep_center_frequency": 2870000000.0,
+                        "sweep_max_frequency": 4100000000.0,
+                        "sweep_min_frequency": 1900000000.0
+                    }
+                },
+                "proteus": {
+                    "class": "ProteusDevice",
+                    "settings": {
+                        "get_data": false,
+                        "ip_address": "192.168.2.4",
+                        "slot_id": 3
+                    }
+                },
+                "filter_wheel": {
+                    "class": "Thorlabs_FW102C",
+                    "settings": {
+                        "get_data": true,
+                        "connection_type": "RS232",
+                        "port": "COM18",
+                        "OD": 0,
+                        "position": 1,
+                        "server_port": 5001
+                    }
+                }
+            },
+            "settings": {
+                "Current_Position": true,
+                "keyboard_control_nanodrive": {
+                    "keyboard_control_on": true,
+                    "x_neg_key": "a",
+                    "x_pos_key": "d",
+                    "x_step": 0.1,
+                    "y_neg_key": "s",
+                    "y_pos_key": "w",
+                    "y_step": 0.1,
+                    "z_pos_key": "k",
+                    "z_neg_key": "j",
+                    "z_step": 0.1,
+                    "return_to_start_key": "o",
+                    "settle_time": 0.2
+                },
+                "automated_optimization": {
+                    "automated_optimization_on": false,
+                    "xstep": 0.1,
+                    "ystep": 0.1,
+                    "zstep": 0.1,
+                    "settle_time": 2.0,
+                    "min_retention_ratio": 0.5,
+                    "damping_ratio": 0.9,
+                    "Continuous_optimization_on": false,
+                    "acceptable_counts": 2500000,
+                    "acceptable_counts_ratio": 1.1,
+                    "min_reoptimize_ratio": 0.5
+                },
+                "point": {
+                    "x": 50.0,
+                    "y": 50.0,
+                    "z": 50.0
+                },
+                "MICROWAVE": {
+                    "enable": false,
+                    "frequency": 2000000000.0,
+                    "power": -10.0,
+                    "MW off after experiment?": true
+                },
+                "LASER": {
+                    "Filter Wheel OD": 0,
+                    "Laser Control": 0.8,
+                    "Laser off after experiment?": false
+                },
+                "count_time": 2.0,
+                "num_cycles": 10,
+                "plot_avg": true,
+                "continuous": true,
+                "graph_params": {
+                    "plot_raw_counts": false,
+                    "refresh_rate": 0.1,
+                    "length_data": 500,
+                    "font_size": 32
+                },
+                "laser_clock": "Pixel",
+                "sample": "",
+                "path": "D:/Data/jannet_trabelsi/august2026/nanodiamonds",
+                "tag": "nanodriveadwinconfocalpoint",
+                "save": true,
+                "copy_prior_experiment": {
+                    "enable": false,
+                    "hdf5_path": ""
+                }
+            }
+        }
+    },
+    "probes": {},
+    "last_save_path": "D:\\PyCharmProjects\\pittqlabsys-single-NV\\src\\gui_config.json"
+}
